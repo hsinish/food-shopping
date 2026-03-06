@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>多人線上料理採買清單</title>
     <!-- 載入樣式與 React 核心 -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,7 +17,11 @@
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
-        body { font-family: 'Noto Sans TC', sans-serif; }
+        body { 
+            font-family: 'Noto Sans TC', sans-serif; 
+            /* 防止 iOS 橡皮筋回彈效果干擾體驗 */
+            overscroll-behavior-y: none;
+        }
         .glass-card {
             background: rgba(255, 255, 255, 0.8);
             backdrop-filter: blur(12px);
@@ -28,6 +32,16 @@
         input::-webkit-inner-spin-button {
             -webkit-appearance: none;
             margin: 0;
+        }
+        /* 核心修正：iOS input 至少需要 16px 才能防止自動縮放 */
+        input, select, textarea {
+            font-size: 16px !important;
+        }
+        /* 針對桌機或較大螢幕可以適度縮小視覺比例，但基礎字體仍維持 16px */
+        @media (min-width: 640px) {
+            .text-sm-desktop {
+                font-size: 0.875rem !important;
+            }
         }
     </style>
 </head>
@@ -257,8 +271,8 @@
                     </header>
 
                     <div className="flex gap-2 mb-8 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-                        <input className="flex-1 p-3 focus:outline-none rounded-xl text-sm sm:text-base" placeholder="想吃什麼料理？" value={newRecipeName} onChange={e => setNewRecipeName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addRecipe()} />
-                        <button onClick={addRecipe} className="bg-orange-500 hover:bg-orange-600 text-white px-4 sm:px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-orange-100 text-sm sm:text-base">新增</button>
+                        <input className="flex-1 p-3 focus:outline-none rounded-xl" placeholder="想吃什麼料理？" value={newRecipeName} onChange={e => setNewRecipeName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addRecipe()} />
+                        <button onClick={addRecipe} className="bg-orange-500 hover:bg-orange-600 text-white px-4 sm:px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-orange-100">新增</button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -292,9 +306,9 @@
                                     <div className="p-4 space-y-3 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
                                         {(recipe.ingredients || []).map(ing => (
                                             <div key={ing.id} className="flex gap-2 items-center group">
-                                                <input ref={ing.id === focusTargetId ? lastInputRef : null} className="flex-1 border-b border-transparent focus:border-orange-200 text-sm py-1 focus:outline-none text-slate-600" placeholder="食材名稱" defaultValue={ing.name} onBlur={e => updateIngredient(recipe.id, ing.id, 'name', e.target.value)} />
-                                                <input type="number" className="w-12 text-center bg-slate-50 rounded py-1 text-sm font-bold text-orange-600 focus:outline-none" defaultValue={ing.amount} onBlur={e => updateIngredient(recipe.id, ing.id, 'amount', e.target.value)} />
-                                                <input className="w-12 border-b border-transparent focus:border-orange-200 text-sm py-1 focus:outline-none text-slate-400" placeholder="單位" defaultValue={ing.unit} onBlur={e => updateIngredient(recipe.id, ing.id, 'unit', e.target.value)} />
+                                                <input ref={ing.id === focusTargetId ? lastInputRef : null} className="flex-1 border-b border-transparent focus:border-orange-200 py-1 focus:outline-none text-slate-600" placeholder="食材名稱" defaultValue={ing.name} onBlur={e => updateIngredient(recipe.id, ing.id, 'name', e.target.value)} />
+                                                <input type="number" className="w-14 text-center bg-slate-50 rounded py-1 font-bold text-orange-600 focus:outline-none" defaultValue={ing.amount} onBlur={e => updateIngredient(recipe.id, ing.id, 'amount', e.target.value)} />
+                                                <input className="w-14 border-b border-transparent focus:border-orange-200 py-1 focus:outline-none text-slate-400" placeholder="單位" defaultValue={ing.unit} onBlur={e => updateIngredient(recipe.id, ing.id, 'unit', e.target.value)} />
                                                 <button onClick={() => removeIngredient(recipe.id, ing.id)} className="text-slate-200 hover:text-red-300">✕</button>
                                             </div>
                                         ))}
