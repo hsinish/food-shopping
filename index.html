@@ -23,6 +23,12 @@
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
+        /* 隱藏 Number input 的箭頭 */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
     </style>
 </head>
 <body class="bg-[#f8fafc] min-h-screen text-slate-900">
@@ -58,6 +64,7 @@
             const [inputCode, setInputCode] = useState(''); 
             const [copyStatus, setCopyStatus] = useState(false);
             const [focusTargetId, setFocusTargetId] = useState(null);
+            const [editingRecipeId, setEditingRecipeId] = useState(null);
             const lastInputRef = useRef(null);
 
             // 初始化 Auth 並處理匿名登入
@@ -83,7 +90,7 @@
                 const recipesCol = db.collection('rooms').doc(roomId).collection('recipes');
                 const unsubscribe = recipesCol.onSnapshot((snapshot) => {
                     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setRecipes(data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+                    setRecipes(data.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
                     setLoading(false);
                 }, (err) => {
                     console.error("Firestore Error (請確認資料庫規則已開啟):", err);
@@ -133,8 +140,16 @@
                 setNewRecipeName('');
             };
 
+            const updateRecipeName = async (id, newName) => {
+                if (!newName.trim()) return;
+                await db.collection('rooms').doc(roomId).collection('recipes').doc(id).update({ name: newName });
+                setEditingRecipeId(null);
+            };
+
             const deleteRecipe = async (id) => {
-                await db.collection('rooms').doc(roomId).collection('recipes').doc(id).delete();
+                if (confirm("確定要刪除這道料理嗎？")) {
+                    await db.collection('rooms').doc(roomId).collection('recipes').doc(id).delete();
+                }
             };
 
             const toggleExpand = (id) => {
@@ -200,21 +215,27 @@
             }, [recipes]);
 
             if (!roomId) return (
-                <div className="flex min-h-screen items-center justify-center p-6 bg-gradient-to-br from-orange-50 via-white to-emerald-50">
-                    <div className="max-w-md w-full space-y-8 glass-card p-10 rounded-[2.5rem] shadow-2xl text-center">
+                <div className="flex min-h-screen items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-orange-50 via-white to-emerald-50">
+                    <div className="max-w-md w-full space-y-8 glass-card p-6 sm:p-10 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl text-center">
                         <div className="space-y-4">
-                            <div className="inline-block p-4 bg-orange-100 rounded-3xl"><span className="text-6xl">🍲</span></div>
-                            <h2 className="text-4xl font-black text-slate-800 tracking-tight">採買小幫手</h2>
-                            <p className="text-slate-500 font-medium">即時同步清單，讓備餐變得輕鬆簡單</p>
+                            <div className="inline-block p-4 bg-orange-100 rounded-3xl"><span className="text-5xl sm:text-6xl">🍲</span></div>
+                            <h2 className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight">採買小幫手</h2>
+                            <p className="text-slate-500 font-medium text-sm sm:text-base">即時同步清單，讓備餐變得輕鬆簡單</p>
                         </div>
-                        <div className="space-y-6 pt-6">
-                            <button onClick={createNewRoom} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-5 rounded-2xl shadow-xl transition-all active:scale-95">建立新空間 ✨</button>
-                            <div className="flex items-center gap-4"><div className="flex-1 h-px bg-slate-200"></div><span className="text-slate-400 text-xs font-bold">或</span><div className="flex-1 h-px bg-slate-200"></div></div>
+                        <div className="space-y-6 pt-4 sm:pt-6">
+                            <button onClick={createNewRoom} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 sm:py-5 rounded-2xl shadow-xl transition-all active:scale-95">建立新空間 ✨</button>
+                            <div className="flex items-center gap-4"><div className="flex-1 h-px bg-slate-200"></div><span className="text-slate-400 text-xs font-bold uppercase tracking-widest">或</span><div className="flex-1 h-px bg-slate-200"></div></div>
                             <div className="space-y-3 text-left">
-                                <label className="text-sm font-bold text-slate-500 ml-1">輸入 6 位代碼進入空間</label>
-                                <div className="flex gap-2 p-1.5 bg-white rounded-[1.5rem] border border-slate-200 shadow-inner">
-                                    <input type="number" placeholder="000000" value={inputCode} onChange={(e) => setInputCode(e.target.value.slice(0, 6))} className="flex-1 p-3 bg-transparent text-center tracking-[0.4em] font-black text-2xl text-slate-700 focus:outline-none placeholder:tracking-normal placeholder:text-slate-200" />
-                                    <button onClick={joinRoom} className="bg-orange-500 hover:bg-orange-600 text-white px-6 rounded-xl font-bold transition-all active:scale-95">進入</button>
+                                <label className="text-xs sm:text-sm font-bold text-slate-500 ml-1">輸入 6 位代碼進入空間</label>
+                                <div className="flex gap-2 p-1.5 bg-white rounded-2xl border border-slate-200 shadow-inner focus-within:border-orange-400 transition-all">
+                                    <input 
+                                        type="number" 
+                                        placeholder="000000" 
+                                        value={inputCode} 
+                                        onChange={(e) => setInputCode(e.target.value.slice(0, 6))} 
+                                        className="w-full bg-transparent text-center tracking-[0.2em] sm:tracking-[0.4em] font-black text-xl sm:text-2xl text-slate-700 focus:outline-none placeholder:tracking-normal placeholder:text-slate-200" 
+                                    />
+                                    <button onClick={joinRoom} className="bg-orange-500 hover:bg-orange-600 text-white px-4 sm:px-6 rounded-xl font-bold transition-all active:scale-95 whitespace-nowrap">進入</button>
                                 </div>
                             </div>
                         </div>
@@ -223,32 +244,49 @@
             );
 
             return (
-                <div className="max-w-4xl mx-auto p-4 pb-32">
+                <div className="max-w-4xl mx-auto p-4 pb-40">
                     <header className="flex justify-between items-center py-6 border-b border-slate-200 mb-8">
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3 sm:gap-4">
                             <button onClick={goHome} className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-xl" title="返回首頁">🏠</button>
-                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">採買清單</h1>
+                            <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">採買清單</h1>
                         </div>
-                        <div onClick={shareCode} className="bg-white px-4 py-2 rounded-2xl border border-slate-200 flex items-center gap-3 cursor-pointer shadow-sm hover:border-orange-200 transition-all">
-                            <div className="flex flex-col"><span className="text-[10px] text-slate-400 font-bold uppercase">空間代碼</span><span className="text-lg font-black text-slate-700 font-mono tracking-widest">{roomId}</span></div>
-                            <div className="bg-slate-50 p-2 rounded-xl text-lg">{copyStatus ? "✅" : "🔗"}</div>
+                        <div onClick={shareCode} className="bg-white px-3 sm:px-4 py-2 rounded-2xl border border-slate-200 flex items-center gap-2 sm:gap-3 cursor-pointer shadow-sm hover:border-orange-200 transition-all">
+                            <div className="flex flex-col"><span className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase">空間代碼</span><span className="text-base sm:text-lg font-black text-slate-700 font-mono tracking-widest">{roomId}</span></div>
+                            <div className="bg-slate-50 p-1.5 sm:p-2 rounded-xl text-base sm:text-lg">{copyStatus ? "✅" : "🔗"}</div>
                         </div>
                     </header>
 
                     <div className="flex gap-2 mb-8 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-                        <input className="flex-1 p-3 focus:outline-none rounded-xl" placeholder="想吃什麼料理？" value={newRecipeName} onChange={e => setNewRecipeName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addRecipe()} />
-                        <button onClick={addRecipe} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-orange-100">新增料理</button>
+                        <input className="flex-1 p-3 focus:outline-none rounded-xl text-sm sm:text-base" placeholder="想吃什麼料理？" value={newRecipeName} onChange={e => setNewRecipeName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addRecipe()} />
+                        <button onClick={addRecipe} className="bg-orange-500 hover:bg-orange-600 text-white px-4 sm:px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-orange-100 text-sm sm:text-base">新增</button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {recipes.map(recipe => (
-                            <div key={recipe.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-fit">
-                                <div onClick={() => toggleExpand(recipe.id)} className={`p-4 flex justify-between cursor-pointer transition-colors ${expandedIds.has(recipe.id) ? 'bg-orange-50/50' : 'hover:bg-slate-50'}`}>
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-bold text-slate-700">{recipe.name}</span>
-                                        <span className="text-[10px] bg-white px-2 py-0.5 rounded-full text-slate-400 border border-slate-100">{recipe.ingredients?.length || 0}</span>
+                            <div key={recipe.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-fit transition-all">
+                                <div 
+                                    onClick={() => toggleExpand(recipe.id)} 
+                                    onDoubleClick={() => setEditingRecipeId(recipe.id)}
+                                    className={`p-4 flex justify-between items-center cursor-pointer transition-colors ${expandedIds.has(recipe.id) ? 'bg-orange-50/50' : 'hover:bg-slate-50'}`}
+                                >
+                                    <div className="flex items-center gap-2 flex-1 mr-2 overflow-hidden">
+                                        {editingRecipeId === recipe.id ? (
+                                            <input 
+                                                autoFocus
+                                                className="font-bold text-slate-700 bg-white border border-orange-200 px-2 py-1 rounded w-full focus:outline-none"
+                                                defaultValue={recipe.name}
+                                                onBlur={(e) => updateRecipeName(recipe.id, e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Enter' && updateRecipeName(recipe.id, e.target.value)}
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                        ) : (
+                                            <React.Fragment>
+                                                <span className="font-bold text-slate-700 truncate" title="點擊兩下可修改名稱">{recipe.name}</span>
+                                                <span className="text-[10px] bg-white px-2 py-0.5 rounded-full text-slate-400 border border-slate-100 flex-shrink-0">{recipe.ingredients?.length || 0}</span>
+                                            </React.Fragment>
+                                        )}
                                     </div>
-                                    <button onClick={(e) => { e.stopPropagation(); deleteRecipe(recipe.id); }} className="text-slate-300 hover:text-red-400">✕</button>
+                                    <button onClick={(e) => { e.stopPropagation(); deleteRecipe(recipe.id); }} className="text-slate-200 hover:text-red-400 p-1 flex-shrink-0">✕</button>
                                 </div>
                                 {expandedIds.has(recipe.id) && (
                                     <div className="p-4 space-y-3 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
@@ -267,28 +305,39 @@
                         ))}
                     </div>
 
+                    {/* 底部導航欄 */}
                     <div className="fixed bottom-6 left-4 right-4 max-w-4xl mx-auto z-50">
                         <div className="bg-slate-900 rounded-[2rem] text-white shadow-2xl overflow-hidden border border-slate-800">
-                            <div onClick={() => setIsShoppingListExpanded(!isShoppingListExpanded)} className="p-5 flex justify-between items-center cursor-pointer hover:bg-slate-800 transition-colors">
+                            <div onClick={() => setIsShoppingListExpanded(!isShoppingListExpanded)} className="p-4 sm:p-5 flex justify-between items-center cursor-pointer hover:bg-slate-800 transition-colors">
                                 <div className="flex items-center gap-3">
-                                    <span className="text-2xl">🛒</span>
-                                    <span className="text-lg font-bold tracking-widest">採買總覽</span>
-                                    <span className="text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full ml-2">
+                                    <span className="text-xl sm:text-2xl">🛒</span>
+                                    <span className="text-base sm:text-lg font-bold tracking-widest">採買總覽</span>
+                                    <span className="text-[10px] sm:text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full ml-1 sm:ml-2">
                                         {shoppingList.filter(i => !i.isBought).length} 待買
                                     </span>
                                 </div>
-                                <span className={`transition-transform duration-300 ${isShoppingListExpanded ? 'rotate-180' : ''}`}>▲</span>
+                                <span className={`transition-transform duration-300 text-slate-500 ${isShoppingListExpanded ? 'rotate-180' : ''}`}>▲</span>
                             </div>
                             {isShoppingListExpanded && (
-                                <div className="p-5 max-h-[60vh] overflow-y-auto grid gap-3 animate-in slide-in-from-bottom-6">
+                                <div className="p-4 sm:p-5 max-h-[60vh] overflow-y-auto grid gap-3 animate-in slide-in-from-bottom-6 bg-slate-900">
                                     {shoppingList.map((item, i) => (
-                                        <div key={i} onClick={() => toggleIngredientBought(item.name, item.unit, item.isBought)} className={`p-4 rounded-2xl flex items-center gap-3 border transition-all cursor-pointer ${item.isBought ? 'opacity-30 bg-slate-800/20 border-slate-800' : 'bg-slate-800 border-slate-700'}`}>
-                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${item.isBought ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'}`}>
+                                        <div key={i} onClick={() => toggleIngredientBought(item.name, item.unit, item.isBought)} className={`p-4 rounded-2xl flex items-center gap-3 border transition-all cursor-pointer ${item.isBought ? 'opacity-30 bg-slate-800/20 border-slate-800' : 'bg-slate-800 border-slate-700 hover:border-slate-500'}`}>
+                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${item.isBought ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'}`}>
                                                 {item.isBought && <span className="text-[10px]">✓</span>}
                                             </div>
-                                            <div className="flex-1 flex justify-between font-bold">
-                                                <span className={item.isBought ? 'line-through text-slate-500' : ''}>{item.name}</span>
-                                                <span className="text-orange-400">{item.amount} <span className="text-[10px] text-slate-500">{item.unit}</span></span>
+                                            <div className="flex-1 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 overflow-hidden">
+                                                <div className="flex flex-col">
+                                                    <span className={`font-bold ${item.isBought ? 'line-through text-slate-500' : ''}`}>{item.name}</span>
+                                                    {/* 顯示來源料理標籤 */}
+                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                        {item.fromRecipes.map((rName, ridx) => (
+                                                            <span key={ridx} className="text-[9px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded leading-tight">#{rName}</span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <span className="text-orange-400 font-black self-end sm:self-center">
+                                                    {item.amount} <span className="text-[10px] text-slate-500 font-medium">{item.unit}</span>
+                                                </span>
                                             </div>
                                         </div>
                                     ))}
