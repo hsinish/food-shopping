@@ -119,14 +119,12 @@
             const joinRoom = () => inputCode.length === 6 ? setRoomId(inputCode) : alert("請輸入 6 位代碼");
             const goHome = () => { if(confirm("確定返回首頁嗎？資料將保存在雲端。")) { setRoomId(''); setInputCode(''); } };
 
-            // 修正：實作原生分享功能
             const shareCode = async () => {
                 const title = "多人線上料理採買清單";
                 const text = `一起來用採買小幫手！\n房間代碼：${roomId}\n立刻加入：`;
                 const url = window.location.href;
 
                 if (navigator.share) {
-                    // 如果支援 Web Share API (手機端)
                     try {
                         await navigator.share({
                             title: title,
@@ -139,7 +137,6 @@
                         console.log("使用者取消分享或發生錯誤", err);
                     }
                 } else {
-                    // 不支援時 (如桌機)，執行複製功能
                     const fullText = `${text}\n房間代碼：${roomId}\n連結：${url}`;
                     if (navigator.clipboard && navigator.clipboard.writeText) {
                         navigator.clipboard.writeText(fullText).then(() => {
@@ -279,16 +276,27 @@
                             <button onClick={goHome} className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-xl" title="返回首頁">🏠</button>
                             <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">採買清單</h1>
                         </div>
-                        {/* 修正：點擊觸發原生分享 */}
                         <div onClick={shareCode} className="bg-white px-3 sm:px-4 py-2 rounded-2xl border border-slate-200 flex items-center gap-2 sm:gap-3 cursor-pointer shadow-sm active:bg-slate-50 hover:border-orange-200 transition-all">
                             <div className="flex flex-col"><span className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase">空間代碼</span><span className="text-base sm:text-lg font-black text-slate-700 font-mono tracking-widest">{roomId}</span></div>
                             <div className="bg-slate-50 p-1.5 sm:p-2 rounded-xl text-base sm:text-lg">{copyStatus ? "✅" : "📤"}</div>
                         </div>
                     </header>
 
-                    <div className="flex gap-2 mb-8 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-                        <input className="flex-1 p-3 focus:outline-none rounded-xl" placeholder="想吃什麼料理？" value={newRecipeName} onChange={e => setNewRecipeName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addRecipe()} />
-                        <button onClick={addRecipe} className="bg-orange-500 hover:bg-orange-600 text-white px-4 sm:px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-orange-100">新增</button>
+                    {/* 修正：優化行動版輸入佈局，防止按鈕超出版面 */}
+                    <div className="flex flex-col sm:flex-row gap-2 mb-8 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
+                        <input 
+                            className="flex-1 p-3 focus:outline-none rounded-xl w-full" 
+                            placeholder="想吃什麼料理？" 
+                            value={newRecipeName} 
+                            onChange={e => setNewRecipeName(e.target.value)} 
+                            onKeyDown={e => e.key === 'Enter' && addRecipe()} 
+                        />
+                        <button 
+                            onClick={addRecipe} 
+                            className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-3 sm:px-6 rounded-xl font-bold transition-all shadow-lg shadow-orange-100 w-full sm:w-auto active:scale-95"
+                        >
+                            新增
+                        </button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
