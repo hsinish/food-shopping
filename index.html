@@ -4,108 +4,146 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>多人線上料理採買清單</title>
-    <!-- 引入 Tailwind CSS (負責畫面美化) -->
+    <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 React (負責網頁邏輯) -->
+    <!-- 引入 React -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        body { font-family: 'Noto+Sans+TC', sans-serif; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    </style>
 </head>
-<body class="bg-slate-50 min-h-screen">
+<body class="bg-[#f8fafc] min-h-screen text-slate-900">
     <div id="root"></div>
 
-    <!-- 使用 type="module" 配合 Babel 預處理 -->
     <script type="text/babel" data-type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-        import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, query, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
-        // Firebase 配置
-        const firebaseConfig = {
-            apiKey: "AIzaSyCiazJbISMO5BTMMXXGEOEJ-HOPrAROLNM",
-            authDomain: "dish2shopping.firebaseapp.com",
-            projectId: "dish2shopping",
-            storageBucket: "dish2shopping.firebasestorage.app",
-            messagingSenderId: "595979988979",
-            appId: "1:595979988979:web:f37c3f10586d63703c2c86",
-            measurementId: "G-MRYK0V2E85"
-        };
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'food-shopping-app';
 
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
 
         const App = () => {
             const [user, setUser] = useState(null);
+            const [roomId, setRoomId] = useState(''); // 當前空間代碼
             const [recipes, setRecipes] = useState([]);
-            const [loading, setLoading] = useState(true);
-            const [error, setError] = useState(null);
+            const [loading, setLoading] = useState(false);
             const [newRecipeName, setNewRecipeName] = useState('');
             const [expandedIds, setExpandedIds] = useState(new Set());
+            const [isShoppingListExpanded, setIsShoppingListExpanded] = useState(false);
+            const [inputCode, setInputCode] = useState(''); 
+            const [copyStatus, setCopyStatus] = useState(false);
+            
+            const [isComposing, setIsComposing] = useState(false);
+            const [focusTargetId, setFocusTargetId] = useState(null);
+            const lastInputRef = useRef(null);
 
-            // 初始化 Firebase
-            let db, auth;
-            try {
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-            } catch (e) {
-                console.error("Firebase 初始化失敗", e);
-            }
-
-            // 1. 匿名登入
+            // 初始化 Auth
             useEffect(() => {
-                if (!auth) return;
-                
-                signInAnonymously(auth).catch(err => {
-                    console.error("登入失敗", err);
-                    if (err.code === 'auth/configuration-not-found') {
-                        setError("auth-config-needed");
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
                     } else {
-                        setError(err.message);
+                        await signInAnonymously(auth);
                     }
-                    setLoading(false);
-                });
-
+                };
+                initAuth();
                 const unsubscribe = onAuthStateChanged(auth, setUser);
                 return () => unsubscribe();
             }, []);
 
-            // 2. 即時監聽數據
+            // 監聽特定 Room 的資料
             useEffect(() => {
-                if (!user || !db) return;
-                const recipesCol = collection(db, 'recipes');
-                const q = query(recipesCol);
-
-                const unsubscribe = onSnapshot(q, (snapshot) => {
+                if (!user || !roomId) return;
+                setLoading(true);
+                const recipesCol = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId, 'recipes');
+                const unsubscribe = onSnapshot(recipesCol, (snapshot) => {
                     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setRecipes(data);
+                    setRecipes(data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
                     setLoading(false);
                 }, (err) => {
-                    console.error("讀取失敗", err);
-                    setError("請確認 Firestore 的存取規則是否允許匿名用戶讀寫。");
+                    console.error(err);
                     setLoading(false);
                 });
-
                 return () => unsubscribe();
-            }, [user]);
+            }, [user, roomId]);
 
-            // --- 操作功能 ---
-            const addRecipe = async () => {
-                if (!newRecipeName.trim() || !db) return;
-                try {
-                    await addDoc(collection(db, 'recipes'), {
-                        name: newRecipeName,
-                        ingredients: [],
-                        createdAt: Date.now()
-                    });
-                    setNewRecipeName('');
-                } catch (e) {
-                    alert("新增失敗，請檢查資料庫規則。");
+            // 自動聚焦
+            useEffect(() => {
+                if (focusTargetId && lastInputRef.current) {
+                    lastInputRef.current.focus();
+                    setFocusTargetId(null);
+                }
+            }, [recipes, focusTargetId]);
+
+            const generateRoomId = () => {
+                return Math.floor(100000 + Math.random() * 900000).toString();
+            };
+
+            const createNewRoom = () => {
+                const newId = generateRoomId();
+                setRoomId(newId);
+            };
+
+            const joinRoom = () => {
+                if (inputCode.length === 6) {
+                    setRoomId(inputCode);
+                } else {
+                    alert("請輸入有效的 6 位數代碼");
                 }
             };
 
+            const goHome = () => {
+                if (confirm("確定要返回首頁嗎？目前的清單代碼會被清除（但資料會保留在雲端）。")) {
+                    setRoomId('');
+                    setInputCode('');
+                }
+            };
+
+            const shareCode = () => {
+                const url = "https://hsinish.github.io/food-shopping/";
+                const text = `一起來想採買清單，代碼：${roomId}\n傳送門：${url}`;
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    setCopyStatus(true);
+                    setTimeout(() => setCopyStatus(false), 2000);
+                } catch (err) {
+                    console.error('無法複製', err);
+                }
+                document.body.removeChild(textArea);
+            };
+
+            const addRecipe = async () => {
+                if (!newRecipeName.trim() || !user || !roomId) return;
+                const recipesCol = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId, 'recipes');
+                await addDoc(recipesCol, {
+                    name: newRecipeName,
+                    ingredients: [],
+                    createdAt: Date.now()
+                });
+                setNewRecipeName('');
+            };
+
             const deleteRecipe = async (id) => {
-                if (!db) return;
-                await deleteDoc(doc(db, 'recipes', id));
+                const recipeDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId, 'recipes', id);
+                await deleteDoc(recipeDoc);
             };
 
             const toggleExpand = (id) => {
@@ -115,157 +153,292 @@
             };
 
             const addIngredient = async (recipeId) => {
-                if (!db) return;
                 const recipe = recipes.find(r => r.id === recipeId);
-                const updated = [...(recipe.ingredients || []), { name: '', amount: 1, unit: '份', id: self.crypto.randomUUID() }];
-                await updateDoc(doc(db, 'recipes', recipeId), { ingredients: updated });
+                const newId = self.crypto.randomUUID();
+                const updated = [...(recipe.ingredients || []), { name: '', amount: 1, unit: '份', id: newId, isBought: false }];
+                setFocusTargetId(newId);
+                const recipeDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId, 'recipes', recipeId);
+                await updateDoc(recipeDoc, { ingredients: updated });
                 if (!expandedIds.has(recipeId)) toggleExpand(recipeId);
             };
 
             const updateIngredient = async (recipeId, ingId, field, value) => {
-                if (!db) return;
                 const recipe = recipes.find(r => r.id === recipeId);
                 const updated = (recipe.ingredients || []).map(ing => 
                     ing.id === ingId ? { ...ing, [field]: field === 'amount' ? (parseFloat(value) || 0) : value } : ing
                 );
-                await updateDoc(doc(db, 'recipes', recipeId), { ingredients: updated });
+                const recipeDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId, 'recipes', recipeId);
+                await updateDoc(recipeDoc, { ingredients: updated });
+            };
+
+            const toggleIngredientBought = async (ingName, unit, currentStatus) => {
+                const promises = recipes.map(recipe => {
+                    const hasIng = (recipe.ingredients || []).some(i => i.name.trim() === ingName && i.unit.trim() === unit);
+                    if (hasIng) {
+                        const updatedIngs = recipe.ingredients.map(i => 
+                            (i.name.trim() === ingName && i.unit.trim() === unit) ? { ...i, isBought: !currentStatus } : i
+                        );
+                        const recipeDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId, 'recipes', recipe.id);
+                        return updateDoc(recipeDoc, { ingredients: updatedIngs });
+                    }
+                    return null;
+                }).filter(p => p !== null);
+                await Promise.all(promises);
             };
 
             const removeIngredient = async (recipeId, ingId) => {
-                if (!db) return;
                 const recipe = recipes.find(r => r.id === recipeId);
                 const updated = (recipe.ingredients || []).filter(ing => ing.id !== ingId);
-                await updateDoc(doc(db, 'recipes', recipeId), { ingredients: updated });
+                const recipeDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId, 'recipes', recipeId);
+                await updateDoc(recipeDoc, { ingredients: updated });
             };
 
-            // --- 加總邏輯 ---
             const shoppingList = useMemo(() => {
                 const summary = {};
                 recipes.forEach(recipe => {
                     (recipe.ingredients || []).forEach(ing => {
-                        if (!ing.name.trim()) return;
-                        const key = `${ing.name.trim()}_${ing.unit.trim()}`;
+                        const ingName = ing.name.trim();
+                        if (!ingName) return;
+                        const key = `${ingName}_${ing.unit.trim()}`;
                         if (summary[key]) {
                             summary[key].amount += ing.amount;
+                            if (!summary[key].fromRecipes.includes(recipe.name)) {
+                                summary[key].fromRecipes.push(recipe.name);
+                            }
+                            if (!ing.isBought) summary[key].isBought = false;
                         } else {
-                            summary[key] = { ...ing };
+                            summary[key] = { ...ing, fromRecipes: [recipe.name] };
                         }
                     });
                 });
-                return Object.values(summary).sort((a, b) => a.name.localeCompare(b.name));
+                return Object.values(summary).sort((a, b) => {
+                    if (a.isBought !== b.isBought) return a.isBought ? 1 : -1;
+                    return a.name.localeCompare(b.name);
+                });
             }, [recipes]);
 
-            if (error === "auth-config-needed") return (
-                <div className="flex h-screen items-center justify-center p-6 bg-slate-900 text-white font-sans">
-                    <div className="max-w-md w-full bg-slate-800 p-8 rounded-3xl border border-slate-700 shadow-2xl">
-                        <div className="text-4xl mb-4 text-center">🔑</div>
-                        <h2 className="text-xl font-bold mb-4 text-center text-orange-400">尚未啟動「匿名登入」功能</h2>
-                        <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-                            Firebase 專案預設是不允許匿名存取的。為了讓這份清單可以運作，請按照以下步驟操作：
-                        </p>
-                        <div className="space-y-4 mb-8">
-                            <div className="flex gap-3">
-                                <div className="bg-slate-700 w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0">1</div>
-                                <p className="text-sm">進入 <strong>Firebase Console</strong></p>
+            // --- 介面渲染：美化首頁 ---
+            if (!roomId) return (
+                <div className="flex min-h-screen items-center justify-center p-6 bg-gradient-to-br from-orange-50 via-white to-emerald-50">
+                    <div className="max-w-md w-full space-y-8 glass-card p-10 rounded-[2.5rem] shadow-2xl border border-white/50 text-center animate-in fade-in zoom-in duration-500">
+                        <div className="space-y-4">
+                            <div className="inline-block p-4 bg-orange-100 rounded-3xl animate-bounce">
+                                <span className="text-6xl">🍲</span>
                             </div>
-                            <div className="flex gap-3">
-                                <div className="bg-slate-700 w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0">2</div>
-                                <p className="text-sm">左側選單點擊 <strong>Authentication</strong></p>
+                            <h2 className="text-4xl font-black text-slate-800 tracking-tight">採買小幫手</h2>
+                            <p className="text-slate-500 font-medium">即時同步清單，讓備餐變得輕鬆簡單</p>
+                        </div>
+                        
+                        <div className="space-y-6 pt-6">
+                            <button 
+                                onClick={createNewRoom}
+                                className="group relative w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-5 rounded-2xl shadow-xl transition-all active:scale-95 overflow-hidden"
+                            >
+                                <span className="relative z-10 flex items-center justify-center gap-2">
+                                    建立新採買空間 <span className="text-xl">✨</span>
+                                </span>
+                                <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-orange-600 opacity-0 group-hover:opacity-10 transition-opacity"></div>
+                            </button>
+                            
+                            <div className="flex items-center gap-4 py-2">
+                                <div className="flex-1 h-px bg-slate-200"></div>
+                                <span className="text-slate-400 text-xs font-bold uppercase tracking-widest">或者是</span>
+                                <div className="flex-1 h-px bg-slate-200"></div>
                             </div>
-                            <div className="flex gap-3">
-                                <div className="bg-slate-700 w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0">3</div>
-                                <p className="text-sm">點選 <strong>Sign-in method</strong> 分頁</p>
-                            </div>
-                            <div className="flex gap-3">
-                                <div className="bg-slate-700 w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0">4</div>
-                                <p className="text-sm">新增 <strong>Anonymous</strong> 並將開關設為啟用</p>
+
+                            <div className="space-y-3 text-left">
+                                <label className="text-sm font-bold text-slate-500 ml-1">輸入 6 位數分享代碼</label>
+                                <div className="flex gap-2 p-1.5 bg-white rounded-[1.5rem] border border-slate-200 shadow-inner">
+                                    <input 
+                                        type="number" 
+                                        maxLength="6"
+                                        placeholder="000000"
+                                        value={inputCode}
+                                        onChange={(e) => setInputCode(e.target.value.slice(0, 6))}
+                                        className="flex-1 p-3 bg-transparent rounded-xl focus:outline-none text-center tracking-[0.4em] font-black text-2xl text-slate-700 placeholder:text-slate-200 placeholder:tracking-normal"
+                                    />
+                                    <button 
+                                        onClick={joinRoom}
+                                        className="bg-orange-500 hover:bg-orange-600 text-white px-6 rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-orange-100"
+                                    >
+                                        進入
+                                    </button>
+                                </div>
+                                <p className="text-center text-xs text-slate-400">與夥伴輸入相同代碼即可同步編輯</p>
                             </div>
                         </div>
-                        <button 
-                            onClick={() => window.location.reload()} 
-                            className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg"
-                        >
-                            我已設定完成，重新載入
-                        </button>
                     </div>
                 </div>
             );
 
-            if (error) return (
-                <div className="flex h-screen items-center justify-center p-6 bg-red-50 text-red-600 font-bold text-center">
-                    <div>
-                        <p className="text-2xl mb-4">⚠️ 發生錯誤</p>
-                        <p className="bg-white p-4 rounded-lg shadow-sm border border-red-200">{error}</p>
-                    </div>
-                </div>
-            );
-
-            if (loading) return (
-                <div className="flex h-screen items-center justify-center text-orange-500 font-bold bg-white">
-                    正在連線至雲端資料庫...
-                </div>
-            );
-
+            // --- 介面渲染：主程式 ---
             return (
-                <div className="max-w-4xl mx-auto p-4 pb-32">
-                    <header className="flex items-center gap-3 py-6 border-b mb-8">
-                        <span className="text-3xl">🥗</span>
-                        <h1 className="text-2xl font-black text-slate-800 tracking-tight">多人共享採買清單</h1>
+                <div className="max-w-4xl mx-auto p-4 pb-32 animate-in fade-in duration-300">
+                    <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-6 border-b border-slate-200 mb-8">
+                        <div className="flex items-center gap-4">
+                            <button 
+                                onClick={goHome}
+                                className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 group"
+                                title="返回首頁"
+                            >
+                                <span className="text-xl group-hover:scale-110 transition-transform block">🏠</span>
+                            </button>
+                            <div className="flex items-center gap-3">
+                                <span className="text-3xl">🥗</span>
+                                <h1 className="text-2xl font-black text-slate-800 tracking-tight">採買清單</h1>
+                            </div>
+                        </div>
+                        <div 
+                            onClick={shareCode}
+                            className="bg-white px-4 py-2 rounded-2xl border border-slate-200 flex items-center gap-3 cursor-pointer hover:border-orange-300 transition-all active:scale-95 group shadow-sm"
+                        >
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">空間代碼</span>
+                                <span className="text-lg font-black text-slate-700 font-mono tracking-widest">{roomId}</span>
+                            </div>
+                            <div className="bg-slate-50 p-2 rounded-xl group-hover:bg-orange-50 transition-colors">
+                                {copyStatus ? <span className="text-xs text-orange-600 font-bold px-1">已複製!</span> : <span className="text-slate-400 group-hover:text-orange-500">🔗</span>}
+                            </div>
+                        </div>
                     </header>
 
+                    {/* 新增料理區域 */}
                     <div className="flex gap-2 mb-8 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
                         <input 
                             className="flex-1 p-3 rounded-xl focus:outline-none text-slate-600"
-                            placeholder="想吃什麼料理？ (如：咖哩飯)"
+                            placeholder="想吃什麼料理？ (按 Enter 新增)"
                             value={newRecipeName}
+                            onCompositionStart={() => setIsComposing(true)}
+                            onCompositionEnd={() => setIsComposing(false)}
                             onChange={e => setNewRecipeName(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && addRecipe()}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' && !isComposing) {
+                                    addRecipe();
+                                }
+                            }}
                         />
-                        <button onClick={addRecipe} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold transition-all">新增</button>
+                        <button onClick={addRecipe} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-orange-100">新增料理</button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+                    {/* 料理清單 */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-24">
+                        {recipes.length === 0 && !loading && (
+                            <div className="col-span-full py-16 text-center text-slate-300">
+                                <div className="text-5xl mb-4 opacity-30">🧺</div>
+                                <p className="italic font-medium">目前還沒有料理清單，快來建立一份吧！</p>
+                            </div>
+                        )}
                         {recipes.map(recipe => (
-                            <div key={recipe.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
-                                <div onClick={() => toggleExpand(recipe.id)} className={`p-4 flex justify-between cursor-pointer items-center transition-colors ${expandedIds.has(recipe.id) ? 'bg-orange-50' : 'hover:bg-slate-50'}`}>
+                            <div key={recipe.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-fit hover:shadow-md transition-shadow">
+                                <div onClick={() => toggleExpand(recipe.id)} className={`p-4 flex justify-between cursor-pointer items-center transition-colors ${expandedIds.has(recipe.id) ? 'bg-orange-50/50' : 'hover:bg-slate-50'}`}>
                                     <div className="flex items-center gap-2">
-                                        <span className={`transition-transform duration-200 ${expandedIds.has(recipe.id) ? 'rotate-180' : ''}`}>▼</span>
+                                        <span className={`transition-transform duration-300 text-[10px] text-orange-400 ${expandedIds.has(recipe.id) ? 'rotate-180' : ''}`}>▼</span>
                                         <span className="font-bold text-slate-700">{recipe.name}</span>
-                                        <span className="text-xs text-slate-400">({recipe.ingredients?.length || 0} 項)</span>
+                                        <span className="text-[10px] bg-white px-2 py-0.5 rounded-full text-slate-400 border border-slate-100">{recipe.ingredients?.length || 0}</span>
                                     </div>
-                                    <button onClick={(e) => { e.stopPropagation(); deleteRecipe(recipe.id); }} className="text-slate-300 hover:text-red-500 p-1">✕</button>
+                                    <button onClick={(e) => { e.stopPropagation(); deleteRecipe(recipe.id); }} className="text-slate-200 hover:text-red-400 p-1 transition-colors">✕</button>
                                 </div>
                                 {expandedIds.has(recipe.id) && (
-                                    <div className="p-4 space-y-3 bg-white border-t border-slate-50">
-                                        {(recipe.ingredients || []).map(ing => (
-                                            <div key={ing.id} className="flex gap-2 items-center">
-                                                <input className="flex-1 border-b border-transparent focus:border-orange-200 text-sm py-1 focus:outline-none" placeholder="食材" value={ing.name} onChange={e => updateIngredient(recipe.id, ing.id, 'name', e.target.value)} />
-                                                <input type="number" className="w-12 text-center bg-slate-50 rounded py-1 text-sm font-bold text-orange-600 focus:outline-none" value={ing.amount} onChange={e => updateIngredient(recipe.id, ing.id, 'amount', e.target.value)} />
-                                                <input className="w-12 border-b border-transparent focus:border-orange-200 text-sm py-1 focus:outline-none text-slate-400" placeholder="單位" value={ing.unit} onChange={e => updateIngredient(recipe.id, ing.id, 'unit', e.target.value)} />
-                                                <button onClick={() => removeIngredient(recipe.id, ing.id)} className="text-slate-200 hover:text-red-300">✕</button>
+                                    <div className="p-4 space-y-3 bg-white border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                                        {(recipe.ingredients || []).map((ing) => (
+                                            <div key={ing.id} className={`flex gap-2 items-center group ${ing.isBought ? 'opacity-40' : ''}`}>
+                                                <input 
+                                                    ref={ing.id === focusTargetId ? lastInputRef : null}
+                                                    className={`flex-1 border-b border-transparent focus:border-orange-200 text-sm py-1 focus:outline-none ${ing.isBought ? 'line-through text-slate-400' : 'text-slate-600'}`} 
+                                                    placeholder="食材名稱" 
+                                                    defaultValue={ing.name} 
+                                                    onCompositionStart={() => setIsComposing(true)}
+                                                    onCompositionEnd={(e) => {
+                                                        setIsComposing(false);
+                                                        updateIngredient(recipe.id, ing.id, 'name', e.target.value);
+                                                    }}
+                                                    onBlur={e => updateIngredient(recipe.id, ing.id, 'name', e.target.value)}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter' && !isComposing) {
+                                                            e.preventDefault();
+                                                            updateIngredient(recipe.id, ing.id, 'name', e.target.value);
+                                                            addIngredient(recipe.id);
+                                                        }
+                                                    }}
+                                                />
+                                                <input 
+                                                    type="number" 
+                                                    className="w-12 text-center bg-slate-50 rounded py-1 text-sm font-bold text-orange-600 focus:outline-none" 
+                                                    defaultValue={ing.amount} 
+                                                    onBlur={e => updateIngredient(recipe.id, ing.id, 'amount', e.target.value)} 
+                                                />
+                                                <input 
+                                                    className="w-12 border-b border-transparent focus:border-orange-200 text-sm py-1 focus:outline-none text-slate-400" 
+                                                    placeholder="單位" 
+                                                    defaultValue={ing.unit} 
+                                                    onBlur={e => updateIngredient(recipe.id, ing.id, 'unit', e.target.value)}
+                                                />
+                                                <button onClick={() => removeIngredient(recipe.id, ing.id)} className="text-slate-200 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
                                             </div>
                                         ))}
-                                        <button onClick={() => addIngredient(recipe.id)} className="w-full py-2 border-2 border-dashed border-slate-100 rounded-xl text-slate-400 text-xs hover:text-orange-500 hover:border-orange-200 transition-all">+ 添加食材</button>
+                                        <button onClick={() => addIngredient(recipe.id)} className="w-full py-2 border-2 border-dashed border-slate-100 rounded-xl text-slate-400 text-xs hover:text-orange-500 hover:border-orange-200 transition-all font-bold">+ 新增食材</button>
                                     </div>
                                 )}
                             </div>
                         ))}
                     </div>
 
-                    <div className="fixed bottom-4 left-4 right-4 max-w-4xl mx-auto z-50">
-                        <div className="bg-slate-800 rounded-2xl text-white shadow-2xl overflow-hidden border border-slate-700">
-                            <div className="p-4 bg-slate-700/50 font-bold flex items-center justify-between border-b border-slate-700">
-                                <div className="flex items-center gap-2"><span>🛒</span><span>採買總覽</span></div>
-                                <span className="text-xs font-normal text-slate-400">自動加總</span>
+                    {/* 底部採買總覽 */}
+                    <div className="fixed bottom-6 left-4 right-4 max-w-4xl mx-auto z-50">
+                        <div className="bg-slate-900 rounded-[2rem] text-white shadow-2xl overflow-hidden border border-slate-800">
+                            <div 
+                                onClick={() => setIsShoppingListExpanded(!isShoppingListExpanded)}
+                                className="p-5 bg-slate-800/40 font-bold flex items-center justify-between border-b border-slate-800 cursor-pointer hover:bg-slate-800 transition-colors"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <span className="text-2xl">🛒</span>
+                                    <span className="tracking-widest text-lg">採買總覽</span>
+                                    <span className="text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full ml-2">
+                                        {shoppingList.filter(i => !i.isBought).length} 待買
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className={`text-xs transition-transform duration-500 ${isShoppingListExpanded ? 'rotate-180' : ''}`}>▲</span>
+                                </div>
                             </div>
-                            <div className="p-4 max-h-48 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {shoppingList.length > 0 ? shoppingList.map((item, i) => (
-                                    <div key={i} className="bg-slate-700/30 p-2 rounded-lg flex justify-between items-center text-sm border border-slate-700/50">
-                                        <span className="truncate mr-2">{item.name}</span>
-                                        <span className="text-orange-400 font-bold shrink-0">{item.amount} {item.unit}</span>
-                                    </div>
-                                )) : <div className="col-span-full text-center py-4 text-slate-500 text-sm">尚未添加食材</div>}
-                            </div>
+                            
+                            {isShoppingListExpanded && (
+                                <div className="p-5 max-h-[60vh] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in slide-in-from-bottom-6 duration-500">
+                                    {shoppingList.length > 0 ? shoppingList.map((item, i) => (
+                                        <div 
+                                            key={i} 
+                                            onClick={() => toggleIngredientBought(item.name, item.unit, item.isBought)}
+                                            className={`p-4 rounded-2xl flex items-center gap-3 border transition-all cursor-pointer select-none
+                                                ${item.isBought 
+                                                    ? 'bg-slate-800/20 border-slate-800 opacity-40 order-last' 
+                                                    : 'bg-slate-800/60 border-slate-700 hover:bg-slate-800/80 order-first'}`}
+                                        >
+                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all shrink-0
+                                                ${item.isBought ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'}`}>
+                                                {item.isBought && <span className="text-xs">✓</span>}
+                                            </div>
+
+                                            <div className="flex flex-col flex-1 min-w-0">
+                                                <div className="flex justify-between items-center gap-2">
+                                                    <span className={`font-bold truncate ${item.isBought ? 'line-through text-slate-500' : ''}`}>
+                                                        {item.name}
+                                                    </span>
+                                                    <span className={`font-black shrink-0 ${item.isBought ? 'text-slate-500' : 'text-orange-400'}`}>
+                                                        {item.amount} <span className="text-[10px] font-normal text-slate-500">{item.unit}</span>
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                                    {item.fromRecipes.map((recipeName, ridx) => (
+                                                        <span key={ridx} className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 text-slate-500 border border-white/5">
+                                                            #{recipeName}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )) : <div className="col-span-full text-center py-10 text-slate-600 italic tracking-widest">目前沒有任何採買項</div>}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
