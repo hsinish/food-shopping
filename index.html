@@ -19,7 +19,6 @@
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
         body { 
             font-family: 'Noto Sans TC', sans-serif; 
-            /* 防止 iOS 橡皮筋回彈效果干擾體驗 */
             overscroll-behavior-y: none;
         }
         .glass-card {
@@ -27,7 +26,6 @@
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
-        /* 隱藏 Number input 的箭頭 */
         input::-webkit-outer-spin-button,
         input::-webkit-inner-spin-button {
             -webkit-appearance: none;
@@ -37,7 +35,6 @@
         input, select, textarea {
             font-size: 16px !important;
         }
-        /* 針對桌機或較大螢幕可以適度縮小視覺比例，但基礎字體仍維持 16px */
         @media (min-width: 640px) {
             .text-sm-desktop {
                 font-size: 0.875rem !important;
@@ -60,7 +57,6 @@
             measurementId: "G-MRYK0V2E85"
         };
 
-        // 初始化 Firebase (使用 Compat 模式以支援 CDN 直接載入)
         firebase.initializeApp(myFirebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
@@ -81,7 +77,6 @@
             const [editingRecipeId, setEditingRecipeId] = useState(null);
             const lastInputRef = useRef(null);
 
-            // 初始化 Auth 並處理匿名登入
             useEffect(() => {
                 const unsubscribe = auth.onAuthStateChanged(async (u) => {
                     if (u) { 
@@ -90,14 +85,13 @@
                         try {
                             await auth.signInAnonymously();
                         } catch (err) {
-                            console.error("匿名登入失敗，請確認 Firebase 後台已開啟匿名驗證功能", err);
+                            console.error("Auth error:", err);
                         }
                     }
                 });
                 return () => unsubscribe();
             }, []);
 
-            // 監聽特定房間的食譜資料
             useEffect(() => {
                 if (!user || !roomId) return;
                 setLoading(true);
@@ -107,7 +101,7 @@
                     setRecipes(data.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
                     setLoading(false);
                 }, (err) => {
-                    console.error("Firestore Error (請確認資料庫規則已開啟):", err);
+                    console.error("Firestore Error:", err);
                     setLoading(false);
                 });
                 return () => unsubscribe();
@@ -125,22 +119,43 @@
             const joinRoom = () => inputCode.length === 6 ? setRoomId(inputCode) : alert("請輸入 6 位代碼");
             const goHome = () => { if(confirm("確定返回首頁嗎？資料將保存在雲端。")) { setRoomId(''); setInputCode(''); } };
 
-            const shareCode = () => {
-                const text = `一起來用採買小幫手！\n房間代碼：${roomId}\n連結：${window.location.href}`;
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(text).then(() => {
+            // 修正：實作原生分享功能
+            const shareCode = async () => {
+                const title = "多人線上料理採買清單";
+                const text = `一起來用採買小幫手！\n房間代碼：${roomId}\n立刻加入：`;
+                const url = window.location.href;
+
+                if (navigator.share) {
+                    // 如果支援 Web Share API (手機端)
+                    try {
+                        await navigator.share({
+                            title: title,
+                            text: `${text}\n房間代碼：${roomId}`,
+                            url: url
+                        });
                         setCopyStatus(true);
                         setTimeout(() => setCopyStatus(false), 2000);
-                    });
+                    } catch (err) {
+                        console.log("使用者取消分享或發生錯誤", err);
+                    }
                 } else {
-                    const textArea = document.createElement("textarea");
-                    textArea.value = text;
-                    document.body.appendChild(textArea);
-                    textArea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    setCopyStatus(true);
-                    setTimeout(() => setCopyStatus(false), 2000);
+                    // 不支援時 (如桌機)，執行複製功能
+                    const fullText = `${text}\n房間代碼：${roomId}\n連結：${url}`;
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(fullText).then(() => {
+                            setCopyStatus(true);
+                            setTimeout(() => setCopyStatus(false), 2000);
+                        });
+                    } else {
+                        const textArea = document.createElement("textarea");
+                        textArea.value = fullText;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        setCopyStatus(true);
+                        setTimeout(() => setCopyStatus(false), 2000);
+                    }
                 }
             };
 
@@ -264,9 +279,10 @@
                             <button onClick={goHome} className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-xl" title="返回首頁">🏠</button>
                             <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">採買清單</h1>
                         </div>
-                        <div onClick={shareCode} className="bg-white px-3 sm:px-4 py-2 rounded-2xl border border-slate-200 flex items-center gap-2 sm:gap-3 cursor-pointer shadow-sm hover:border-orange-200 transition-all">
+                        {/* 修正：點擊觸發原生分享 */}
+                        <div onClick={shareCode} className="bg-white px-3 sm:px-4 py-2 rounded-2xl border border-slate-200 flex items-center gap-2 sm:gap-3 cursor-pointer shadow-sm active:bg-slate-50 hover:border-orange-200 transition-all">
                             <div className="flex flex-col"><span className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase">空間代碼</span><span className="text-base sm:text-lg font-black text-slate-700 font-mono tracking-widest">{roomId}</span></div>
-                            <div className="bg-slate-50 p-1.5 sm:p-2 rounded-xl text-base sm:text-lg">{copyStatus ? "✅" : "🔗"}</div>
+                            <div className="bg-slate-50 p-1.5 sm:p-2 rounded-xl text-base sm:text-lg">{copyStatus ? "✅" : "📤"}</div>
                         </div>
                     </header>
 
@@ -295,7 +311,7 @@
                                             />
                                         ) : (
                                             <React.Fragment>
-                                                <span className="font-bold text-slate-700 truncate" title="點擊兩下可修改名稱">{recipe.name}</span>
+                                                <span className="font-bold text-slate-700 truncate">{recipe.name}</span>
                                                 <span className="text-[10px] bg-white px-2 py-0.5 rounded-full text-slate-400 border border-slate-100 flex-shrink-0">{recipe.ingredients?.length || 0}</span>
                                             </React.Fragment>
                                         )}
@@ -305,11 +321,32 @@
                                 {expandedIds.has(recipe.id) && (
                                     <div className="p-4 space-y-3 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
                                         {(recipe.ingredients || []).map(ing => (
-                                            <div key={ing.id} className="flex gap-2 items-center group">
-                                                <input ref={ing.id === focusTargetId ? lastInputRef : null} className="flex-1 border-b border-transparent focus:border-orange-200 py-1 focus:outline-none text-slate-600" placeholder="食材名稱" defaultValue={ing.name} onBlur={e => updateIngredient(recipe.id, ing.id, 'name', e.target.value)} />
-                                                <input type="number" className="w-14 text-center bg-slate-50 rounded py-1 font-bold text-orange-600 focus:outline-none" defaultValue={ing.amount} onBlur={e => updateIngredient(recipe.id, ing.id, 'amount', e.target.value)} />
-                                                <input className="w-14 border-b border-transparent focus:border-orange-200 py-1 focus:outline-none text-slate-400" placeholder="單位" defaultValue={ing.unit} onBlur={e => updateIngredient(recipe.id, ing.id, 'unit', e.target.value)} />
-                                                <button onClick={() => removeIngredient(recipe.id, ing.id)} className="text-slate-200 hover:text-red-300">✕</button>
+                                            <div key={ing.id} className="flex gap-2 items-center group w-full">
+                                                <input 
+                                                    ref={ing.id === focusTargetId ? lastInputRef : null} 
+                                                    className="flex-[3] min-w-0 border-b border-transparent focus:border-orange-200 py-1 focus:outline-none text-slate-600" 
+                                                    placeholder="食材" 
+                                                    defaultValue={ing.name} 
+                                                    onBlur={e => updateIngredient(recipe.id, ing.id, 'name', e.target.value)} 
+                                                />
+                                                <input 
+                                                    type="number" 
+                                                    className="flex-[1.5] min-w-0 w-12 text-center bg-slate-50 rounded py-1 font-bold text-orange-600 focus:outline-none" 
+                                                    defaultValue={ing.amount} 
+                                                    onBlur={e => updateIngredient(recipe.id, ing.id, 'amount', e.target.value)} 
+                                                />
+                                                <input 
+                                                    className="flex-[1.5] min-w-0 w-12 border-b border-transparent focus:border-orange-200 py-1 focus:outline-none text-slate-400" 
+                                                    placeholder="單位" 
+                                                    defaultValue={ing.unit} 
+                                                    onBlur={e => updateIngredient(recipe.id, ing.id, 'unit', e.target.value)} 
+                                                />
+                                                <button 
+                                                    onClick={() => removeIngredient(recipe.id, ing.id)} 
+                                                    className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-400 transition-colors"
+                                                >
+                                                    <span className="text-lg">✕</span>
+                                                </button>
                                             </div>
                                         ))}
                                         <button onClick={() => addIngredient(recipe.id)} className="w-full py-2 border-2 border-dashed border-slate-100 rounded-xl text-slate-400 text-xs font-bold hover:text-orange-500 hover:border-orange-200 transition-all">+ 新增食材</button>
@@ -319,7 +356,6 @@
                         ))}
                     </div>
 
-                    {/* 底部導航欄 */}
                     <div className="fixed bottom-6 left-4 right-4 max-w-4xl mx-auto z-50">
                         <div className="bg-slate-900 rounded-[2rem] text-white shadow-2xl overflow-hidden border border-slate-800">
                             <div onClick={() => setIsShoppingListExpanded(!isShoppingListExpanded)} className="p-4 sm:p-5 flex justify-between items-center cursor-pointer hover:bg-slate-800 transition-colors">
@@ -342,7 +378,6 @@
                                             <div className="flex-1 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 overflow-hidden">
                                                 <div className="flex flex-col">
                                                     <span className={`font-bold ${item.isBought ? 'line-through text-slate-500' : ''}`}>{item.name}</span>
-                                                    {/* 顯示來源料理標籤 */}
                                                     <div className="flex flex-wrap gap-1 mt-1">
                                                         {item.fromRecipes.map((rName, ridx) => (
                                                             <span key={ridx} className="text-[9px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded leading-tight">#{rName}</span>
